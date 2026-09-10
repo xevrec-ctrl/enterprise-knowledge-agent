@@ -1,92 +1,187 @@
-# LangGraph ReAct Agent Template
+# 企业知识库与任务协同 Agent
 
-[![CI](https://github.com/langchain-ai/react-agent/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/langchain-ai/react-agent/actions/workflows/unit-tests.yml)
-[![Open in - LangGraph Studio](https://img.shields.io/badge/Open_in-LangGraph_Studio-00324d.svg?logo=data:image/svg%2bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4NS4zMzMiIGhlaWdodD0iODUuMzMzIiB2ZXJzaW9uPSIxLjAiIHZpZXdCb3g9IjAgMCA2NCA2NCI+PHBhdGggZD0iTTEzIDcuOGMtNi4zIDMuMS03LjEgNi4zLTYuOCAyNS43LjQgMjQuNi4zIDI0LjUgMjUuOSAyNC41QzU3LjUgNTggNTggNTcuNSA1OCAzMi4zIDU4IDcuMyA1Ni43IDYgMzIgNmMtMTIuOCAwLTE2LjEuMy0xOSAxLjhtMzcuNiAxNi42YzIuOCAyLjggMy40IDQuMiAzLjQgNy42cy0uNiA0LjgtMy40IDcuNkw0Ny4yIDQzSDE2LjhsLTMuNC0zLjRjLTQuOC00LjgtNC44LTEwLjQgMC0xNS4ybDMuNC0zLjRoMzAuNHoiLz48cGF0aCBkPSJNMTguOSAyNS42Yy0xLjEgMS4zLTEgMS43LjQgMi41LjkuNiAxLjcgMS44IDEuNyAyLjcgMCAxIC43IDIuOCAxLjYgNC4xIDEuNCAxLjkgMS40IDIuNS4zIDMuMi0xIC42LS42LjkgMS40LjkgMS41IDAgMi43LS41IDIuNy0xIDAtLjYgMS4xLS44IDIuNi0uNGwyLjYuNy0xLjgtMi45Yy01LjktOS4zLTkuNC0xMi4zLTExLjUtOS44TTM5IDI2YzAgMS4xLS45IDIuNS0yIDMuMi0yLjQgMS41LTIuNiAzLjQtLjUgNC4yLjguMyAyIDEuNyAyLjUgMy4xLjYgMS41IDEuNCAyLjMgMiAyIDEuNS0uOSAxLjItMy41LS40LTMuNS0yLjEgMC0yLjgtMi44LS44LTMuMyAxLjYtLjQgMS42LS41IDAtLjYtMS4xLS4xLTEuNS0uNi0xLjItMS42LjctMS43IDMuMy0yLjEgMy41LS41LjEuNS4yIDEuNi4zIDIuMiAwIC43LjkgMS40IDEuOSAxLjYgMi4xLjQgMi4zLTIuMy4yLTMuMi0uOC0uMy0yLTEuNy0yLjUtMy4xLTEuMS0zLTMtMy4zLTMtLjUiLz48L3N2Zz4=)](https://langgraph-studio.vercel.app/templates/open?githubUrl=https://github.com/langchain-ai/react-agent)
+这是一个基于 LangGraph 的中文企业 Agent 学习项目。它可以检索内部 Markdown
+知识库、保留答案来源，并把自然语言需求整理成任务草稿。项目基于
+[LangChain 官方 ReAct Agent 模板](https://github.com/langchain-ai/react-agent)
+进行二次开发，保留 MIT 许可证。
 
-This template showcases a [ReAct agent](https://arxiv.org/abs/2210.03629) implemented using [LangGraph](https://github.com/langchain-ai/langgraph), designed for [LangGraph Studio](https://github.com/langchain-ai/langgraph-studio). ReAct agents are uncomplicated, prototypical agents that can be flexibly extended to many tools.
+> 当前为可测试的 V0.1。本仓库中的公司制度和数据均为虚构示例，不代表任何真实公司。
 
-![Graph view in LangGraph studio UI](./static/studio_ui.png)
+## 为什么做这个项目
 
-The core logic, defined in `src/react_agent/graph.py`, demonstrates a flexible ReAct agent that iteratively reasons about user queries and executes actions, showcasing the power of this approach for complex problem-solving tasks.
+普通聊天机器人可能直接根据模型记忆回答公司制度，容易产生无依据内容。本项目把
+“模型思考”和“业务事实”分开：模型负责理解问题、选择工具和组织答案，知识库工具负责
+返回事实和来源，LangGraph 负责控制工具循环和引用检查。
 
-## What it does
+## 当前功能
 
-The ReAct agent:
+- **中文企业知识库检索**：读取 `knowledge_base/` 下的 Markdown 文件，按章节切分并使用
+  BM25 排序。
+- **可追溯回答**：检索结果携带 `【来源：文件名#章节】`；引用检查节点会要求模型补充
+  遗漏的来源。
+- **任务草稿生成**：把目标整理为负责人、截止时间、验收标准和执行步骤；不会向外部
+  系统提交数据。
+- **模型可替换**：默认配置通义千问的 OpenAI 兼容接口，也可改用 DeepSeek 等模型。
+- **离线单元测试**：检索、工具、条件路由和引用检查无需 API Key 即可验证。
 
-1. Takes a user **query** as input
-2. Reasons about the query and decides on an action
-3. Executes the chosen action using available tools
-4. Observes the result of the action
-5. Repeats steps 2-4 until it can provide a final answer
+## 系统流程
 
-By default, it's set up with a basic set of tools, but can be easily extended with custom tools to suit various use cases.
+```mermaid
+flowchart LR
+    U[用户问题] --> M[LLM 分析与工具选择]
+    M -->|需要事实或任务拆解| T[工具节点]
+    T --> K[本地知识库检索]
+    T --> D[任务草稿生成]
+    K --> M
+    D --> M
+    M -->|生成最终回答| G{引用检查}
+    G -->|知识库回答缺少来源| M
+    G -->|通过| E[返回答案]
+```
 
-## Getting Started
+这条图对应 `src/enterprise_agent/graph.py`：`call_model` 负责模型调用，`tools`
+执行工具，`citation_guard` 检查知识库回答是否保留来源。检查最多触发一次，避免死循环。
 
-Assuming you have already [installed LangGraph Studio](https://github.com/langchain-ai/langgraph-studio?tab=readme-ov-file#download), to set up:
+## 项目结构
 
-1. Create a `.env` file.
+```text
+enterprise-knowledge-agent/
+├── knowledge_base/                 # 中文 Markdown 示例知识库
+├── src/enterprise_agent/
+│   ├── context.py                  # 模型与公司名称配置
+│   ├── graph.py                    # LangGraph 工作流和引用检查
+│   ├── knowledge_base.py           # Markdown 切分与 BM25 检索
+│   ├── prompts.py                  # 中文系统提示词
+│   ├── state.py                    # 会话状态
+│   ├── tools.py                    # 知识检索与任务草稿工具
+│   └── utils.py                    # 模型加载和消息处理
+├── tests/                          # 离线单元测试与可选集成测试
+├── .env.example                    # 环境变量示例
+└── langgraph.json                  # LangGraph 启动入口
+```
+
+## 本地运行
+
+### 1. 准备环境
+
+- Python 3.11 或更高版本
+- 推荐安装 [uv](https://docs.astral.sh/uv/)
+- 一个支持工具调用的模型 API Key
+
+### 2. 安装依赖
 
 ```bash
-cp .env.example .env
+uv sync --dev
 ```
 
-2. Define required API keys in your `.env` file.
+### 3. 配置模型
 
-The primary [search tool](./src/react_agent/tools.py) [^1] used is [Tavily](https://tavily.com/). Create an API key [here](https://app.tavily.com/sign-in).
+复制 `.env.example` 为 `.env`，然后填入自己的密钥。不要把 `.env` 提交到 GitHub。
 
-### Setup Model
+通义千问示例：
 
-The defaults values for `model` are shown below:
-
-```yaml
-model: claude-sonnet-4-5-20250929
+```dotenv
+MODEL=openai/qwen-plus
+OPENAI_API_KEY=你的密钥
+OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+COMPANY_NAME=示例科技公司
 ```
 
-Follow the instructions below to get set up, or pick one of the additional options.
+DeepSeek 示例：
 
-#### Anthropic
-
-To use Anthropic's chat models:
-
-1. Sign up for an [Anthropic API key](https://console.anthropic.com/) if you haven't already.
-2. Once you have your API key, add it to your `.env` file:
-
-```
-ANTHROPIC_API_KEY=your-api-key
-```
-#### OpenAI
-
-To use OpenAI's chat models:
-
-1. Sign up for an [OpenAI API key](https://platform.openai.com/signup).
-2. Once you have your API key, add it to your `.env` file:
-```
-OPENAI_API_KEY=your-api-key
+```dotenv
+MODEL=openai/deepseek-chat
+OPENAI_API_KEY=你的密钥
+OPENAI_BASE_URL=https://api.deepseek.com
+COMPANY_NAME=示例科技公司
 ```
 
-3. Customize whatever you'd like in the code.
-4. Open the folder LangGraph Studio!
+### 4. 运行测试
 
-## How to customize
+```bash
+uv run pytest tests/unit_tests -q
+```
 
-1. **Add new tools**: Extend the agent's capabilities by adding new tools in [tools.py](./src/react_agent/tools.py). These can be any Python functions that perform specific tasks.
-2. **Select a different model**: We default to Anthropic's Claude 3 Sonnet. You can select a compatible chat model using `provider/model-name` via runtime context. Example: `openai/gpt-4-turbo-preview`.
-3. **Customize the prompt**: We provide a default system prompt in [prompts.py](./src/react_agent/prompts.py). You can easily update this via context in the studio.
+单元测试不会调用模型，也不会产生 API 费用。配置好密钥后，可执行真实对话测试：
 
-You can also quickly extend this template by:
+没有 API Key 时也可以先查看两个工具的真实输出：
 
-- Modifying the agent's reasoning process in [graph.py](./src/react_agent/graph.py).
-- Adjusting the ReAct loop or adding additional steps to the agent's decision-making process.
+```bash
+uv run python scripts/demo_without_llm.py
+```
 
-## Development
+配置好密钥后，可执行真实对话测试：
 
-While iterating on your graph, you can edit past state and rerun your app from past states to debug specific nodes. Local changes will be automatically applied via hot reload. Try adding an interrupt before the agent calls tools, updating the default system message in `src/react_agent/context.py` to take on a persona, or adding additional nodes and edges!
+PowerShell：
 
-Follow up requests will be appended to the same thread. You can create an entirely new thread, clearing previous history, using the `+` button in the top right.
+```powershell
+$env:RUN_INTEGRATION_TESTS="1"
+uv run pytest tests/integration_tests -q
+```
 
-You can find the latest (under construction) docs on [LangGraph](https://github.com/langchain-ai/langgraph) here, including examples and other references. Using those guides can help you pick the right patterns to adapt here for your use case.
+Bash：
 
-LangGraph Studio also integrates with [LangSmith](https://smith.langchain.com/) for more in-depth tracing and collaboration with teammates.
+```bash
+RUN_INTEGRATION_TESTS=1 uv run pytest tests/integration_tests -q
+```
 
-[^1]: https://python.langchain.com/docs/concepts/#tools
+### 5. 启动 LangGraph 开发服务
+
+```bash
+uv run langgraph dev
+```
+
+启动后可以尝试：
+
+- `出差回来后最晚什么时候提交报销，需要哪些材料？`
+- `我忘记打卡了，应该怎样处理？`
+- `把“本周整理客户高频问题”拆成一份任务草稿。`
+- `公司的年终奖规则是什么？`（知识库没有依据时，应拒绝编造）
+
+## 怎样替换成自己的知识库
+
+1. 删除 `knowledge_base/` 下的虚构示例文件。
+2. 按“一个主题一个 Markdown 文件”的方式放入自己的脱敏资料。
+3. 一级标题写文档名称，二级标题写可引用章节。
+4. 重启开发服务后，索引会重新加载。
+
+不要把真实客户数据、密码、API Key 或未经授权的公司内部文件提交到公开仓库。
+
+## 我完成的二次开发
+
+相对于官方 ReAct 模板，本项目完成了以下改造：
+
+1. 把单一联网搜索工具替换为企业知识库检索和任务草稿工具。
+2. 实现中文 Markdown 章节切分，以及不依赖外部数据库的 BM25 检索。
+3. 为检索结果设计统一来源标记，增加 LangGraph 引用检查节点。
+4. 支持通义千问、DeepSeek 等 OpenAI 兼容模型端点。
+5. 增加虚构企业资料、离线测试、中文运行文档和系统流程图。
+
+## 下一步计划
+
+- V0.2：支持 PDF 和 Word 导入、文本清洗与增量索引。
+- V0.3：加入向量检索和 BM25 混合召回，对比不同检索策略。
+- V0.4：保存多轮会话并增加人工确认节点。
+- V0.5：提供简单 Web 页面和 20 条评测数据集。
+
+## 面试讲解提纲
+
+**项目目标**：让模型只依据企业资料回答制度问题，并能生成可执行任务草稿。
+
+**核心设计**：LLM 不直接保存业务事实，而是通过 Tool Calling 查询知识库；LangGraph
+负责 ReAct 循环，最终答案进入引用检查节点，缺少来源时再修正一次。
+
+**我解决的问题**：
+
+- 中文不能只按空格分词，因此检索层同时生成单字和双字 token。
+- 每个 Markdown 二级标题单独成为检索块，答案可以精确引用到章节。
+- 任务工具只返回 `draft`，避免模型误称已经创建或审批任务。
+- 将模型相关集成测试与离线单元测试分开，避免每次测试都调用付费接口。
+
+**当前限制**：V0.1 只支持 Markdown 和 BM25，尚未接入向量数据库；示例知识库是虚构
+数据。回答质量仍受模型工具调用能力影响。
+
+## License 与致谢
+
+本项目遵循 [MIT License](LICENSE)。初始结构来自 LangChain 官方
+`react-agent` 模板，二次开发时保留了原许可证和来源说明。

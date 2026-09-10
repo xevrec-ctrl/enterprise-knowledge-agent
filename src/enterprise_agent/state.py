@@ -1,0 +1,27 @@
+"""State definitions for the LangGraph workflow."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Sequence
+
+from langchain_core.messages import AnyMessage
+from langgraph.graph import add_messages
+from langgraph.managed import IsLastStep
+from typing_extensions import Annotated
+
+
+@dataclass
+class InputState:
+    """Public input accepted by the agent graph."""
+
+    messages: Annotated[Sequence[AnyMessage], add_messages] = field(
+        default_factory=list
+    )
+
+
+@dataclass
+class State(InputState):
+    """Internal state passed between reasoning, tool, and guard nodes."""
+
+    is_last_step: IsLastStep = field(default=False)
